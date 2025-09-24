@@ -1,4 +1,4 @@
-// Sparraffenland Promocode Extractor Content Script
+// Sparraffenland Promocode Extractor Content Script - Version 2
 
 class PromoCodeExtractor {
     constructor() {
@@ -30,12 +30,17 @@ class PromoCodeExtractor {
         const codeContainer = document.querySelector('[id*="code"], [class*="code"]');
         if (codeContainer && codeContainer.firstChild) {
             const codeText = codeContainer.firstChild.textContent;
-            if (codeText && this.isValidCode(codeText)) {
-                foundCodes.push({
-                    type: 'codeContainer',
-                    code: codeText,
-                    element: codeContainer
-                });
+            if (codeText) {
+                // Extrahiere den eigentlichen Promocode aus der URL
+                const extractedCode = this.extractCodeFromText(codeText);
+                if (extractedCode) {
+                    foundCodes.push({
+                        type: 'codeContainer',
+                        code: extractedCode,
+                        originalText: codeText,
+                        element: codeContainer
+                    });
+                }
             }
         }
 
@@ -43,12 +48,16 @@ class PromoCodeExtractor {
         const hiddenElements = document.querySelectorAll('[style*="display: none"], .hidden');
         hiddenElements.forEach(el => {
             const text = el.textContent || el.innerText;
-            if (text && this.isValidCode(text)) {
-                foundCodes.push({
-                    type: 'hidden',
-                    code: text,
-                    element: el
-                });
+            if (text) {
+                const extractedCode = this.extractCodeFromText(text);
+                if (extractedCode) {
+                    foundCodes.push({
+                        type: 'hidden',
+                        code: extractedCode,
+                        originalText: text,
+                        element: el
+                    });
+                }
             }
         });
 
@@ -57,12 +66,16 @@ class PromoCodeExtractor {
         elementsWithData.forEach(el => {
             ['code', 'promo', 'coupon'].forEach(attr => {
                 const value = el.dataset[attr];
-                if (value && this.isValidCode(value)) {
-                    foundCodes.push({
-                        type: 'data-attribute',
-                        code: value,
-                        element: el
-                    });
+                if (value) {
+                    const extractedCode = this.extractCodeFromText(value);
+                    if (extractedCode) {
+                        foundCodes.push({
+                            type: 'data-attribute',
+                            code: extractedCode,
+                            originalText: value,
+                            element: el
+                        });
+                    }
                 }
             });
         });
@@ -71,11 +84,12 @@ class PromoCodeExtractor {
         const links = document.querySelectorAll('a[href]');
         links.forEach(link => {
             const href = link.href;
-            const codeMatch = href.match(/[?&](?:code|promo|coupon)=([A-Z0-9]+)/i);
-            if (codeMatch) {
+            const extractedCode = this.extractCodeFromText(href);
+            if (extractedCode) {
                 foundCodes.push({
                     type: 'url-parameter',
-                    code: codeMatch[1],
+                    code: extractedCode,
+                    originalText: href,
                     element: link
                 });
             }
@@ -96,6 +110,41 @@ class PromoCodeExtractor {
         return foundCodes;
     }
 
+    extractCodeFromText(text) {
+        if (!text) return null;
+
+        // 1. Suche nach promotionCode Parameter in URLs
+        const promotionCodeMatch = text.match(/[?&]promotionCode=([A-Z0-9]+)/i);
+        if (promotionCodeMatch) {
+            return promotionCodeMatch[1];
+        }
+
+        // 2. Suche nach anderen Code-Parametern in URLs
+        const codeParamMatch = text.match(/[?&](?:code|promo|coupon)=([A-Z0-9]+)/i);
+        if (codeParamMatch) {
+            return codeParamMatch[1];
+        }
+
+        // 3. Suche nach standalone Codes (alphanumerisch, 6-20 Zeichen)
+        const standaloneMatch = text.match(/\b[A-Z0-9]{6,20}\b/);
+        if (standaloneMatch) {
+            const code = standaloneMatch[0];
+            // Filtere häufige False Positives heraus
+            const excludeList = ['FALLBACK', 'LINK', 'MONDAY', 'INACTIVE', 'TEILNAHMEBEDINGUNGEN'];
+            if (!excludeList.includes(code) && !code.match(/^\d+$/)) {
+                return code;
+            }
+        }
+
+        // 4. Suche nach Prozent-Rabatten
+        const percentMatch = text.match(/(\d{1,3})%\s*(?:RABATT|OFF)/i);
+        if (percentMatch) {
+            return `${percentMatch[1]}% RABATT`;
+        }
+
+        return null;
+    }
+
     searchInStorage(foundCodes) {
         // localStorage durchsuchen
         for (let i = 0; i < localStorage.length; i++) {
@@ -103,10 +152,12 @@ class PromoCodeExtractor {
             const value = localStorage.getItem(key);
 
             if (key && (key.toLowerCase().includes('code') || key.toLowerCase().includes('promo'))) {
-                if (this.isValidCode(value)) {
+                const extractedCode = this.extractCodeFromText(value);
+                if (extractedCode) {
                     foundCodes.push({
                         type: 'localStorage',
-                        code: value,
+                        code: extractedCode,
+                        originalText: value,
                         storageKey: key
                     });
                 }
@@ -119,32 +170,17 @@ class PromoCodeExtractor {
             const value = sessionStorage.getItem(key);
 
             if (key && (key.toLowerCase().includes('code') || key.toLowerCase().includes('promo'))) {
-                if (this.isValidCode(value)) {
+                const extractedCode = this.extractCodeFromText(value);
+                if (extractedCode) {
                     foundCodes.push({
                         type: 'sessionStorage',
-                        code: value,
+                        code: extractedCode,
+                        originalText: value,
                         storageKey: key
                     });
                 }
             }
         }
-    }
-
-    isValidCode(text) {
-        if (!text) return false;
-
-        // Bereinige den Text
-        const cleaned = text.trim();
-
-        // Prüfe ob es wie ein Promocode aussieht
-        const codePatterns = [
-            /^[A-Z0-9]{4,20}$/,           // Alphanumerisch, 4-20 Zeichen
-            /^[A-Z]{2,10}[0-9]{2,10}$/,   // Buchstaben gefolgt von Zahlen
-            /^\d{1,3}%\s*(RABATT|OFF)/i, // Prozent-Rabatte
-            /https?:\/\/[^\s]+/        // URLs (können Weiterleitungen zu Codes sein)
-        ];
-
-        return codePatterns.some(pattern => pattern.test(cleaned));
     }
 
     setupMutationObserver() {
@@ -223,22 +259,36 @@ class PromoCodeExtractor {
             font-family: Arial, sans-serif;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             max-width: 300px;
+            cursor: pointer;
         `;
 
         notification.innerHTML = `
-            <strong>Promocode gefunden!</strong><br>
-            <code style="background: rgba(255,255,255,0.2); padding: 2px 4px; border-radius: 2px;">
+            <strong>🎉 Promocode gefunden!</strong><br>
+            <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 16px; font-weight: bold; text-align: center; letter-spacing: 1px;">
                 ${codeData.code}
-            </code><br>
-            <small>Typ: ${codeData.type}</small>
+            </div>
+            <small>Klicken zum Kopieren • Typ: ${codeData.type}</small>
         `;
+
+        // Click-Handler zum Kopieren
+        notification.addEventListener('click', () => {
+            navigator.clipboard.writeText(codeData.code).then(() => {
+                notification.innerHTML = `
+                    <strong>✅ Code kopiert!</strong><br>
+                    <div style="background: rgba(255,255,255,0.2); padding: 8px; border-radius: 4px; margin: 8px 0; font-size: 16px; font-weight: bold; text-align: center; letter-spacing: 1px;">
+                        ${codeData.code}
+                    </div>
+                    <small>Erfolgreich in die Zwischenablage kopiert!</small>
+                `;
+            });
+        });
 
         document.body.appendChild(notification);
 
-        // Nach 5 Sekunden ausblenden
+        // Nach 8 Sekunden ausblenden
         setTimeout(() => {
             notification.remove();
-        }, 5000);
+        }, 8000);
     }
 
     saveCode(codeData) {
@@ -264,3 +314,12 @@ if (document.readyState === 'loading') {
 } else {
     new PromoCodeExtractor();
 }
+
+// Message Listener für Popup-Anfragen
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'SEARCH_CODES') {
+        const extractor = new PromoCodeExtractor();
+        const codes = extractor.searchForCodes();
+        sendResponse({ codes: codes });
+    }
+});
