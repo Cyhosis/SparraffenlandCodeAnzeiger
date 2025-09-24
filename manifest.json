@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Sparraffenland Promocode Extractor",
+  "version": "1.0",
+  "description": "Extrahiert Promocodes von Sparraffenland Gewinnspielseiten",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.brame.io/*",
+        "*://campaigns.brame.io/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Promocode Extractor"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
