@@ -1,5 +1,3 @@
-// Popup Script für Promocode Extractor
-
 document.addEventListener('DOMContentLoaded', function() {
     const codesList = document.getElementById('codesList');
     const noCodes = document.getElementById('noCodes');
@@ -20,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Lausche auf neue Codes vom Content Script
     chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         if (message.type === 'CODE_FOUND') {
-            loadSavedCodes(); // Aktualisiere die Anzeige
+            loadSavedCodes();
             updateStatus('Neuer Promocode gefunden!');
         }
     });
@@ -38,31 +36,58 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function getCouponValueType(prizeInfo, code) {
+        if (!prizeInfo) return 'Unbekannt';
+        
+        if (prizeInfo.includes('%')) {
+            return 'Prozent (%)';
+        }
+        
+        if (prizeInfo.includes('€') || prizeInfo.toLowerCase().includes('euro')) {
+            return 'Euro (€)';
+        }
+        
+        if (code && code.match(/^\d+€?$/)) {
+            return 'Euro (€)';
+        }
+        
+        return 'Unbekannt';
+    }
+
     function displayCodes(codes) {
         if (codes.length === 0) {
             codesList.innerHTML = '<div class="no-codes" id="noCodes">Keine Promocodes gefunden.<br>Spiele das Glücksrad und gewinne einen Code!</div>';
             return;
         }
 
-        // Sortiere nach Timestamp (neueste zuerst)
         codes.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
         let html = '';
         codes.forEach((codeData, index) => {
             const timestamp = codeData.timestamp ? new Date(codeData.timestamp).toLocaleString('de-DE') : 'Unbekannt';
             const url = codeData.url ? new URL(codeData.url).hostname : 'Unbekannt';
+            const valueType = getCouponValueType(codeData.prizeInfo, codeData.code);
 
             html += `
                 <div class="code-item">
-                    <div class="code-text" id="code-${index}">${escapeHtml(codeData.code)}</div>
+                    <div class="code-text main-code" id="code-${index}">${escapeHtml(codeData.code)}</div>
+                    ${codeData.prizeInfo ? `<div class="prize-info">${escapeHtml(codeData.prizeInfo)}</div>` : ''}
                     <div class="code-type">
-                        <strong>Typ:</strong> ${codeData.type}<br>
+                        <strong>Typ:</strong> ${getTypeDisplayName(codeData.type)}<br>
+                        <strong>Werttyp:</strong> ${escapeHtml(valueType)}<br>
                         <strong>Gefunden:</strong> ${timestamp}<br>
                         <strong>Website:</strong> ${url}
                     </div>
-                    <button class="copy-btn" onclick="copyCode('${escapeHtml(codeData.code)}', this)">
-                        📋 Kopieren
-                    </button>
+                    <div class="button-group">
+                        <button class="copy-btn" onclick="copyCode('${escapeHtml(codeData.code)}', this)">
+                            📋 Code kopieren
+                        </button>
+                        ${codeData.originalText && codeData.originalText !== codeData.code && codeData.originalText.startsWith('http') ? 
+                            `<button class="copy-btn secondary" onclick="copyCode('${escapeHtml(codeData.originalText)}', this)">
+                                🔗 URL kopieren
+                            </button>` : ''
+                        }
+                    </div>
                 </div>
             `;
         });
@@ -70,12 +95,28 @@ document.addEventListener('DOMContentLoaded', function() {
         codesList.innerHTML = html;
     }
 
+    function getTypeDisplayName(type) {
+        const typeMap = {
+            'codeContainer': 'Code Container',
+            'hidden': 'Verstecktes Element',
+            'data-attribute': 'Data-Attribut', 
+            'url-parameter': 'URL Parameter',
+            'localStorage': 'Local Storage',
+            'sessionStorage': 'Session Storage'
+        };
+        return typeMap[type] || type;
+    }
+
+    function truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
+
     function updateStatus(message) {
         status.textContent = message;
         status.style.background = '#e8f5e8';
         status.style.borderColor = '#4CAF50';
 
-        // Nach 3 Sekunden zurück zu neutral
         setTimeout(() => {
             status.style.background = '#e3f2fd';
             status.style.borderColor = '#2196f3';
@@ -88,7 +129,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return div.innerHTML;
     }
 
-    // Global function for copying codes
     window.copyCode = function(code, button) {
         navigator.clipboard.writeText(code).then(function() {
             const originalText = button.textContent;
@@ -101,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 2000);
         }).catch(function(err) {
             console.error('Fehler beim Kopieren:', err);
-            // Fallback für ältere Browser
+
             const textArea = document.createElement('textarea');
             textArea.value = code;
             document.body.appendChild(textArea);
@@ -111,25 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             button.textContent = '✅ Kopiert!';
             setTimeout(() => {
-                button.textContent = '📋 Kopieren';
+                button.textContent = originalText;
             }, 2000);
         });
     };
-
-    // Suche aktiv nach neuen Codes auf der aktuellen Seite
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        const tab = tabs[0];
-        if (tab && (tab.url.includes('brame.io') || tab.url.includes('sparraffenland'))) {
-            chrome.tabs.sendMessage(tab.id, {type: 'SEARCH_CODES'}, function(response) {
-                if (chrome.runtime.lastError) {
-                    // Content Script ist möglicherweise nicht geladen
-                    updateStatus('Content Script wird geladen...');
-                } else if (response && response.codes) {
-                    updateStatus(`${response.codes.length} Code(s) auf aktueller Seite gefunden!`);
-                }
-            });
-        } else {
-            updateStatus('Besuche eine Brame.io Gewinnspiel-Seite!');
-        }
-    });
 });
