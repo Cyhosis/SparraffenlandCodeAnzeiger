@@ -11,6 +11,9 @@ Chrome öffnen → chrome://extensions/
 "Entpackte Erweiterung laden" → Ordner auswählen
 
 Mögliche Fehler:
-Öffne manifest.json mit einem BOM-freien UTF-8-Editor, entferne alle unsichtbaren Zeichen vor dem ersten {.
-Lade in Chrome unter chrome://extensions den Ordner, der manifest.json enthält – nicht die einzelne Datei.
-Dann wird Chrome das Manifest ohne den “expected value at line 1 column 1”-Fehler laden.
+Öffne die Datei manifest.json mit einem BOM-freien UTF-8-Editor.
+Entferne alle unsichtbaren Zeichen vor dem ersten {.
+Öffne in Chrome die Seite chrome://extensions.
+Klicke auf „Entpackte Erweiterung laden“.
+Wähle den Ordner aus, der die Datei manifest.json enthält – nicht die einzelne Datei.
+Chrome wird das Manifest ohne den Fehler „expected value at line 1 column 1“ laden.
